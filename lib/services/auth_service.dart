@@ -2,12 +2,22 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../models/app_user.dart';
 
 class AuthService {
+  final http.Client _client;
+
+  AuthService({http.Client? client})
+      : _client = client ?? http.Client();
+
+  // =========================================================
+  // LOGIN
+  // =========================================================
+
   Future<AppUser?> login({
     required String username,
     required String password,
@@ -21,7 +31,7 @@ class AuthService {
     }
 
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse(ApiConfig.loginUrl),
             headers: {
@@ -35,7 +45,11 @@ class AuthService {
           )
           .timeout(const Duration(seconds: 15));
 
-      final dynamic decoded = jsonDecode(response.body);
+      debugPrint(
+        'LOGIN STATUS: ${response.statusCode}',
+      );
+
+      final decoded = _decodeResponse(response.body);
 
       if (decoded is! Map<String, dynamic>) {
         throw const AuthException(
@@ -48,28 +62,27 @@ class AuthService {
       }
 
       if (response.statusCode != 200) {
-        final message = decoded['message'];
-
         throw AuthException(
-          message is String
-              ? message
-              : 'Server gagal memproses login.',
+          _getMessage(
+            decoded,
+            'Server gagal memproses login.',
+          ),
         );
       }
 
       if (decoded['success'] != true ||
           decoded['data'] is! Map<String, dynamic>) {
-        final message = decoded['message'];
-
         throw AuthException(
-          message is String
-              ? message
-              : 'Respons login tidak sesuai format.',
+          _getMessage(
+            decoded,
+            'Respons login tidak sesuai format.',
+          ),
         );
       }
 
-      final userData =
-          decoded['data'] as Map<String, dynamic>;
+      final userData = Map<String, dynamic>.from(
+        decoded['data'] as Map<String, dynamic>,
+      );
 
       final user = AppUser.fromJson(userData);
 
@@ -84,12 +97,25 @@ class AuthService {
         );
       }
 
+      // Log aman: tidak menampilkan token asli.
+      debugPrint('LOGIN BERHASIL');
+      debugPrint('USER ID: ${user.id}');
+      debugPrint('ROLE: ${user.role.name}');
+      debugPrint(
+        'TOKEN TERSEDIA: ${user.token.isNotEmpty}',
+      );
+      debugPrint(
+        'TOKEN LENGTH: ${user.token.length}',
+      );
+
       return user;
     } on TimeoutException {
       throw const AuthException(
         'Server terlalu lama merespons. Coba lagi.',
       );
-    } on http.ClientException {
+    } on http.ClientException catch (e) {
+      debugPrint('LOGIN CLIENT ERROR: ${e.message}');
+
       throw const AuthException(
         'Tidak dapat terhubung ke server. '
         'Periksa koneksi dan URL API.',
@@ -98,12 +124,29 @@ class AuthService {
       throw const AuthException(
         'Respons server bukan JSON yang valid.',
       );
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      debugPrint('LOGIN ERROR: $e');
+
+      throw const AuthException(
+        'Terjadi kesalahan saat login.',
+      );
     }
   }
 
+  // =========================================================
+  // VALIDASI SESSION
+  // =========================================================
+
   Future<AppUser?> validateSession(String token) async {
+    if (token.trim().isEmpty) {
+      debugPrint('VALIDATE SESSION: Token kosong.');
+      return null;
+    }
+
     try {
-      final response = await http
+      final response = await _client
           .get(
             Uri.parse(
               '${ApiConfig.baseUrl}/validate_session.php',
@@ -115,35 +158,129 @@ class AuthService {
           )
           .timeout(const Duration(seconds: 15));
 
+      debugPrint(
+        'VALIDATE SESSION STATUS: ${response.statusCode}',
+      );
+
+      debugPrint(
+        'VALIDATE SESSION RESPONSE: ${response.body}',
+      );
+
+      if (response.statusCode == 401) {
+        debugPrint('VALIDATE SESSION: Token tidak valid.');
+        return null;
+      }
+
       if (response.statusCode != 200) {
+        debugPrint(
+          'VALIDATE SESSION: HTTP ${response.statusCode}',
+        );
         return null;
       }
 
-      final dynamic decoded = jsonDecode(response.body);
+      final decoded = _decodeResponse(response.body);
 
-      if (decoded is! Map<String, dynamic> ||
-          decoded['success'] != true ||
+      if (decoded is! Map<String, dynamic>) {
+        debugPrint(
+          'VALIDATE SESSION: Format JSON tidak valid.',
+        );
+        return null;
+      }
+
+      if (decoded['success'] != true ||
           decoded['data'] is! Map<String, dynamic>) {
+        debugPrint(
+          'VALIDATE SESSION: Respons tidak berhasil.',
+        );
         return null;
       }
 
-      final data =
-          decoded['data'] as Map<String, dynamic>;
+      final data = Map<String, dynamic>.from(
+        decoded['data'] as Map<String, dynamic>,
+      );
 
+      // Endpoint validasi sesi tidak harus mengirim token kembali.
+      // Token yang sedang digunakan dipertahankan di Flutter.
       data['token'] = token;
 
       final user = AppUser.fromJson(data);
 
-      if (!user.isActive || user.token.isEmpty) {
+      if (!user.isActive || user.token.trim().isEmpty) {
+        debugPrint(
+          'VALIDATE SESSION: User tidak aktif atau token kosong.',
+        );
         return null;
       }
 
+      debugPrint('VALIDATE SESSION BERHASIL');
+      debugPrint('USER ID: ${user.id}');
+      debugPrint('ROLE: ${user.role.name}');
+
       return user;
-    } on Exception {
+    } on TimeoutException {
+      debugPrint('VALIDATE SESSION: Request timeout.');
+      return null;
+    } on http.ClientException catch (e) {
+      debugPrint(
+        'VALIDATE SESSION CLIENT ERROR: ${e.message}',
+      );
+      return null;
+    } on FormatException catch (e) {
+      debugPrint(
+        'VALIDATE SESSION JSON ERROR: $e',
+      );
+      return null;
+    } catch (e) {
+      debugPrint(
+        'VALIDATE SESSION ERROR: $e',
+      );
       return null;
     }
   }
+
+  // =========================================================
+  // HELPER: DECODE JSON
+  // =========================================================
+
+  dynamic _decodeResponse(String body) {
+    try {
+      return jsonDecode(body);
+    } on FormatException {
+      throw const AuthException(
+        'Respons server bukan JSON yang valid.',
+      );
+    }
+  }
+
+  // =========================================================
+  // HELPER: AMBIL PESAN SERVER
+  // =========================================================
+
+  String _getMessage(
+    Map<String, dynamic> data,
+    String defaultMessage,
+  ) {
+    final message = data['message'];
+
+    if (message is String && message.trim().isNotEmpty) {
+      return message;
+    }
+
+    return defaultMessage;
+  }
+
+  // =========================================================
+  // DISPOSE
+  // =========================================================
+
+  void dispose() {
+    _client.close();
+  }
 }
+
+// ===========================================================
+// AUTH EXCEPTION
+// ===========================================================
 
 class AuthException implements Exception {
   final String message;

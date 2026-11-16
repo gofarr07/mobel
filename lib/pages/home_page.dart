@@ -1,7 +1,11 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
+import '../services/notification_service.dart';
+import 'notifications_page.dart';
 import 'profile_page.dart';
 import 'employees_page.dart';
 import 'shifts_page.dart';
@@ -16,7 +20,7 @@ import 'ai_assistant_page.dart';
 import 'ai_strategy_page.dart';
 import 'time_converter_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   final AppUser user;
 
   const HomePage({
@@ -24,9 +28,79 @@ class HomePage extends StatelessWidget {
     required this.user,
   });
 
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  int _unreadCount = 0;
+  bool _loadingNotifications = false;
+  String? _notificationError;
+  late final NotificationService _notificationService;
+
+  AppUser get user => widget.user;
+
   bool get _canUseAi =>
       user.role == UserRole.manager ||
       user.role == UserRole.akuntan;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _notificationService = NotificationService(
+      token: user.token,
+    );
+
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    if (_loadingNotifications) return;
+
+    _loadingNotifications = true;
+
+    try {
+      final result = await _notificationService.getNotifications(
+        page: 1,
+        limit: 1,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _unreadCount = result.unreadCount;
+        _notificationError = null;
+      });
+    } on NotificationException catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _notificationError = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _notificationError = 'Gagal memuat jumlah notifikasi.';
+      });
+    } finally {
+      _loadingNotifications = false;
+    }
+  }
+
+  Future<void> _openNotifications() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => NotificationsPage(user: user),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _loadUnreadCount();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +116,55 @@ class HomePage extends StatelessWidget {
         backgroundColor: const Color(0xFF6F4E37),
         foregroundColor: Colors.white,
         actions: [
+          // Tombol notifikasi dengan badge jumlah belum dibaca.
+          IconButton(
+            onPressed: _openNotifications,
+            tooltip: _notificationError == null
+                ? 'Notifikasi'
+                : 'Notifikasi (gagal memuat jumlah)',
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined),
+                if (_unreadCount > 0)
+                  Positioned(
+                    right: -7,
+                    top: -5,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 17,
+                        minHeight: 17,
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade700,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: const Color(0xFF6F4E37),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        _unreadCount > 99
+                            ? '99+'
+                            : '$_unreadCount',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // Tombol profil tetap dipertahankan.
           IconButton(
             onPressed: () {
               Navigator.push(
@@ -57,63 +180,67 @@ class HomePage extends StatelessWidget {
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildWelcomeCard(),
-              const SizedBox(height: 24),
-              const Text(
-                'Dashboard',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF4E342E),
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Anda masuk sebagai ${user.roleName}.',
-                style: const TextStyle(
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 20),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: menus.length,
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.95,
-                ),
-                itemBuilder: (context, index) {
-                  final menu = menus[index];
-
-                  return _buildMenuCard(
-                    context,
-                    title: menu.title,
-                    icon: menu.icon,
-                    description: menu.description,
-                    onTap: menu.onTap,
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              const Center(
-                child: Text(
-                  'Café Management System',
+        child: RefreshIndicator(
+          onRefresh: _loadUnreadCount,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildWelcomeCard(),
+                const SizedBox(height: 24),
+                const Text(
+                  'Dashboard',
                   style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.black45,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF4E342E),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(
+                  'Anda masuk sebagai ${user.roleName}.',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: menus.length,
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.95,
+                  ),
+                  itemBuilder: (context, index) {
+                    final menu = menus[index];
+
+                    return _buildMenuCard(
+                      context,
+                      title: menu.title,
+                      icon: menu.icon,
+                      description: menu.description,
+                      onTap: menu.onTap,
+                    );
+                  },
+                ),
+                const SizedBox(height: 24),
+                const Center(
+                  child: Text(
+                    'Café Management System',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.black45,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
