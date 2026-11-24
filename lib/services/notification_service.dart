@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -21,7 +20,10 @@ class NotificationService {
         'Authorization': 'Bearer $token',
       };
 
-  /// Mengirim request dan memproses respons dari PHP API.
+  // =========================================================
+  // REQUEST API
+  // =========================================================
+
   Future<Map<String, dynamic>> _request(
     Future<http.Response> request, {
     required String endpoint,
@@ -58,7 +60,6 @@ class NotificationService {
         );
       }
 
-      // Token tidak valid atau sesi login sudah berakhir.
       if (response.statusCode == 401) {
         throw const NotificationException(
           'Sesi login berakhir atau token tidak valid. '
@@ -66,14 +67,12 @@ class NotificationService {
         );
       }
 
-      // Hak akses ditolak.
       if (response.statusCode == 403) {
         throw const NotificationException(
           'Akses notifikasi ditolak oleh server.',
         );
       }
 
-      // Endpoint tidak ditemukan.
       if (response.statusCode == 404) {
         throw const NotificationException(
           'Endpoint notifikasi tidak ditemukan. '
@@ -81,7 +80,6 @@ class NotificationService {
         );
       }
 
-      // Terjadi kesalahan di server.
       if (response.statusCode >= 500) {
         throw NotificationException(
           'Server mengalami kesalahan '
@@ -89,7 +87,6 @@ class NotificationService {
         );
       }
 
-      // Memastikan respons HTTP berhasil.
       if (response.statusCode < 200 ||
           response.statusCode >= 300) {
         throw NotificationException(
@@ -99,7 +96,6 @@ class NotificationService {
         );
       }
 
-      // Memastikan format status API sesuai.
       if (decoded['success'] != true) {
         throw NotificationException(
           decoded['message']?.toString() ??
@@ -128,13 +124,15 @@ class NotificationService {
         'Detail: ${e.message}',
       );
     } on NotificationException {
-      // Pertahankan pesan error yang sudah dibuat.
       rethrow;
     } catch (e, stackTrace) {
       debugPrint(
         'NOTIFICATION UNKNOWN ERROR: $e',
       );
-      debugPrintStack(stackTrace: stackTrace);
+
+      debugPrintStack(
+        stackTrace: stackTrace,
+      );
 
       throw const NotificationException(
         'Terjadi kesalahan saat memproses notifikasi.',
@@ -142,7 +140,10 @@ class NotificationService {
     }
   }
 
-  /// Mengambil daftar notifikasi milik pengguna yang sedang login.
+  // =========================================================
+  // MENGAMBIL DAFTAR NOTIFIKASI
+  // =========================================================
+
   Future<NotificationResult> getNotifications({
     int page = 1,
     int limit = 20,
@@ -163,7 +164,10 @@ class NotificationService {
     );
 
     final json = await _request(
-      http.get(uri, headers: _headers),
+      http.get(
+        uri,
+        headers: _headers,
+      ),
       endpoint: uri.toString(),
     );
 
@@ -201,7 +205,29 @@ class NotificationService {
     );
   }
 
-  /// Menandai satu notifikasi sebagai sudah dibaca.
+  // =========================================================
+  // TES NOTIFIKASI UNTUK AKUN YANG SEDANG LOGIN
+  // =========================================================
+
+  Future<void> sendTestNotification() async {
+    final uri = Uri.parse(
+      '${ApiConfig.baseUrl}/notifications_test.php',
+    );
+
+    await _request(
+      http.post(
+        uri,
+        headers: _headers,
+        body: jsonEncode({}),
+      ),
+      endpoint: uri.toString(),
+    );
+  }
+
+  // =========================================================
+  // MENANDAI SATU NOTIFIKASI SUDAH DIBACA
+  // =========================================================
+
   Future<void> markAsRead(
     String notificationId,
   ) async {
@@ -229,7 +255,10 @@ class NotificationService {
     );
   }
 
-  /// Menandai seluruh notifikasi sebagai sudah dibaca.
+  // =========================================================
+  // MENANDAI SEMUA NOTIFIKASI SUDAH DIBACA
+  // =========================================================
+
   Future<void> markAllAsRead() async {
     final uri = Uri.parse(
       '${ApiConfig.baseUrl}/notifications_read_all.php',
@@ -244,6 +273,10 @@ class NotificationService {
       endpoint: uri.toString(),
     );
   }
+
+  // =========================================================
+  // KONVERSI DATA ANGKA
+  // =========================================================
 
   static int _asInt(
     dynamic value, {
@@ -260,7 +293,10 @@ class NotificationService {
   }
 }
 
-/// Hasil pengambilan daftar notifikasi.
+// =========================================================
+// HASIL PENGAMBILAN DAFTAR NOTIFIKASI
+// =========================================================
+
 class NotificationResult {
   final List<AppNotification> notifications;
   final int unreadCount;
@@ -277,7 +313,10 @@ class NotificationResult {
   });
 }
 
-/// Error khusus untuk fitur notifikasi.
+// =========================================================
+// ERROR KHUSUS NOTIFIKASI
+// =========================================================
+
 class NotificationException implements Exception {
   final String message;
 

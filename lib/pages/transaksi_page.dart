@@ -206,50 +206,43 @@ class _TransaksiPageState extends State<TransaksiPage> {
             ),
             const SizedBox(height: 8),
 
-            RadioListTile<String>(
-              contentPadding: EdgeInsets.zero,
-              value: 'cash',
+            RadioGroup<String>(
               groupValue: _paymentMethod,
-              onChanged: _saving
-                  ? null
-                  : (value) {
-                      if (value == null) return;
+              onChanged: (value) {
+                if (_saving || value == null) return;
 
-                      setState(() {
-                        _paymentMethod = value;
-                      });
-                    },
-              title: const Row(
-                children: [
-                  Icon(Icons.payments_outlined),
-                  SizedBox(width: 10),
-                  Text('Cash'),
+                setState(() {
+                  _paymentMethod = value;
+                });
+              },
+              child: Column(
+                children: const [
+                  RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    value: 'cash',
+                    title: Row(
+                      children: [
+                        Icon(Icons.payments_outlined),
+                        SizedBox(width: 10),
+                        Text('Cash'),
+                      ],
+                    ),
+                    subtitle: Text('Pembayaran tunai'),
+                  ),
+                  RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    value: 'qris',
+                    title: Row(
+                      children: [
+                        Icon(Icons.qr_code_2),
+                        SizedBox(width: 10),
+                        Text('QRIS'),
+                      ],
+                    ),
+                    subtitle: Text('Pembayaran melalui QRIS'),
+                  ),
                 ],
               ),
-              subtitle: const Text('Pembayaran tunai'),
-            ),
-
-            RadioListTile<String>(
-              contentPadding: EdgeInsets.zero,
-              value: 'qris',
-              groupValue: _paymentMethod,
-              onChanged: _saving
-                  ? null
-                  : (value) {
-                      if (value == null) return;
-
-                      setState(() {
-                        _paymentMethod = value;
-                      });
-                    },
-              title: const Row(
-                children: [
-                  Icon(Icons.qr_code_2),
-                  SizedBox(width: 10),
-                  Text('QRIS'),
-                ],
-              ),
-              subtitle: const Text('Pembayaran melalui QRIS'),
             ),
           ],
         ),
@@ -301,7 +294,7 @@ class _TransaksiPageState extends State<TransaksiPage> {
                           child: ListView.separated(
                             padding: const EdgeInsets.all(16),
                             itemCount: _menus.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (_, _) =>
                                 const SizedBox(height: 8),
                             itemBuilder: (context, index) {
                               final menu = _menus[index];

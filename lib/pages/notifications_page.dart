@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/app_user.dart';
 import '../models/notification_model.dart';
 import '../services/notification_service.dart';
+import '../services/local_notification_service.dart';
 
 class NotificationsPage extends StatefulWidget {
   final AppUser user;
@@ -25,6 +26,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   bool _loading = true;
   bool _markingAll = false;
+  bool _sendingTest = false;
 
   String? _error;
 
@@ -32,7 +34,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
   int _page = 1;
   int _totalPages = 1;
 
-  // Menyimpan ID notifikasi yang sedang diproses.
   final Set<String> _processingIds = {};
 
   @override
@@ -43,6 +44,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
       token: widget.user.token,
     );
 
+    // Minta izin notifikasi Android (Android 13+) jika belum diizinkan
+    LocalNotificationService.requestPermission();
+
     _loadNotifications();
   }
 
@@ -52,6 +56,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Future<void> _loadNotifications({
     int page = 1,
+    bool notifyPhone = false,
   }) async {
     if (!mounted) return;
 
@@ -76,6 +81,45 @@ class _NotificationsPageState extends State<NotificationsPage> {
             result.totalPages < 1 ? 1 : result.totalPages;
         _loading = false;
       });
+
+      // Jika tombol Cek Notifikasi ditekan, tampilkan juga di status bar HP
+      if (notifyPhone) {
+        final unreadItems =
+            result.notifications.where((n) => !n.isRead).toList();
+
+        if (unreadItems.isNotEmpty) {
+          // Tampilkan notifikasi yang belum dibaca (maksimal 3 agar tidak spam)
+          for (int i = 0; i < unreadItems.length && i < 3; i++) {
+            final item = unreadItems[i];
+            final id = int.tryParse(item.id) ??
+                ((item.createdAt?.millisecondsSinceEpoch ?? 1000) % 100000 + i);
+
+            await LocalNotificationService.showNotification(
+              id: id,
+              title: item.title,
+              body: item.body,
+            );
+          }
+
+          _showMessage(
+            '${unreadItems.length} notifikasi belum dibaca ditampilkan di status bar HP.',
+            backgroundColor: Colors.green,
+          );
+        } else {
+          // Tetap berikan notifikasi di status bar HP bahwa cek selesai
+          await LocalNotificationService.showNotification(
+            id: 888888,
+            title: 'Cek Notifikasi Kafe',
+            body:
+                'Tidak ada notifikasi baru. Semua notifikasi sudah dibaca.',
+          );
+
+          _showMessage(
+            'Tidak ada notifikasi baru.',
+            backgroundColor: const Color(0xFF6F4E37),
+          );
+        }
+      }
     } on NotificationException catch (e) {
       if (!mounted) return;
 
@@ -91,6 +135,95 @@ class _NotificationsPageState extends State<NotificationsPage> {
         _loading = false;
       });
     }
+  }
+
+  // =========================================================
+  // TES NOTIFIKASI
+  // =========================================================
+
+  Future<void> _sendTestNotification() async {
+    if (_sendingTest || _loading) return;
+
+    setState(() {
+      _sendingTest = true;
+    });
+
+    try {
+      // 1. Munculkan langsung notifikasi tes ke status bar HP
+      await LocalNotificationService.showTestNotification();
+
+      // 2. Simpan juga ke database server via API
+      await _service.sendTestNotification();
+
+      if (!mounted) return;
+
+      _showMessage(
+        'Notifikasi tes berhasil dimunculkan di HP & dibuat di server.',
+        backgroundColor: Colors.green,
+      );
+
+      // Muat ulang daftar agar notifikasi tes langsung tampil di list
+      await _loadNotifications(page: 1);
+    } on NotificationException catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        e.message,
+        backgroundColor: Colors.red,
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showMessage(
+        'Gagal mengirim notifikasi tes.',
+        backgroundColor: Colors.red,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _sendingTest = false;
+        });
+      }
+    }
+  }
+
+  // =========================================================
+  // WIDGET TOMBOL TES NOTIFIKASI
+  // =========================================================
+
+  Widget _buildTestNotificationButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _sendingTest || _loading
+            ? null
+            : _sendTestNotification,
+        icon: _sendingTest
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.notifications_active),
+        label: Text(
+          _sendingTest ? 'Mengirim...' : 'Tes Notif',
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF6F4E37),
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.brown.shade200,
+          padding: const EdgeInsets.symmetric(
+            vertical: 14,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
+    );
   }
 
   // =========================================================
@@ -160,6 +293,105 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   // =========================================================
+  // MEMBUKA DETAIL NOTIFIKASI
+  // =========================================================
+
+  Future<void> _openNotification(
+    AppNotification notification,
+  ) async {
+    if (_processingIds.contains(notification.id)) return;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                _getNotificationIcon(notification.type),
+                color: const Color(0xFF6F4E37),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  notification.title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  notification.body,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Divider(),
+                Text(
+                  'Tipe: ${notification.type}',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Waktu: ${_formatDate(notification.createdAt)}',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  notification.isRead
+                      ? 'Status: Sudah dibaca'
+                      : 'Status: Belum dibaca',
+                  style: const TextStyle(
+                    color: Color(0xFF6F4E37),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6F4E37),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Tutup'),
+            ),
+          ],
+        );
+      },
+    );
+
+    // Setelah detail dibuka, tandai sebagai sudah dibaca.
+    if (!notification.isRead && mounted) {
+      await _markRead(notification);
+    }
+  }
+
+  // =========================================================
   // MENANDAI SEMUA NOTIFIKASI SUDAH DIBACA
   // =========================================================
 
@@ -197,6 +429,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
       _showMessage(
         'Semua notifikasi berhasil ditandai sudah dibaca.',
+        backgroundColor: Colors.green,
       );
     } on NotificationException catch (e) {
       if (!mounted) return;
@@ -223,7 +456,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
   // PESAN SNACKBAR
   // =========================================================
 
-  void _showMessage(String message) {
+  void _showMessage(
+    String message, {
+    Color? backgroundColor,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -232,6 +468,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
         SnackBar(
           content: Text(message),
           behavior: SnackBarBehavior.floating,
+          backgroundColor: backgroundColor,
         ),
       );
   }
@@ -276,6 +513,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'system':
         return Icons.settings_outlined;
 
+      case 'shift_reminder':
+        return Icons.schedule;
+
+      case 'test':
+        return Icons.notifications_active;
+
       default:
         return Icons.notifications_active_outlined;
     }
@@ -301,7 +544,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFF8F0),
-
       appBar: AppBar(
         title: const Text(
           'Notifikasi',
@@ -311,8 +553,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ),
         backgroundColor: const Color(0xFF6F4E37),
         foregroundColor: Colors.white,
-
         actions: [
+          IconButton(
+            onPressed: _loading
+                ? null
+                : () => _loadNotifications(page: 1, notifyPhone: true),
+            tooltip: 'Cek notifikasi terbaru',
+            icon: const Icon(Icons.refresh),
+          ),
           IconButton(
             onPressed: _markingAll || _unreadCount == 0
                 ? null
@@ -329,11 +577,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   )
                 : const Icon(Icons.done_all),
           ),
-
           const SizedBox(width: 8),
         ],
       ),
-
       body: _buildBody(),
     );
   }
@@ -363,22 +609,47 @@ class _NotificationsPageState extends State<NotificationsPage> {
       children: [
         _buildUnreadHeader(),
 
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          child: _buildTestNotificationButton(),
+        ),
+
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _loading
+                  ? null
+                  : () => _loadNotifications(page: 1, notifyPhone: true),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Cek Notifikasi Terbaru'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF6F4E37),
+                side: const BorderSide(
+                  color: Color(0xFF6F4E37),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ),
+        ),
+
         Expanded(
           child: RefreshIndicator(
             onRefresh: () {
-              return _loadNotifications(page: _page);
+              return _loadNotifications(page: _page, notifyPhone: true);
             },
             color: const Color(0xFF6F4E37),
             child: ListView.separated(
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(12),
-
               itemCount: _notifications.length,
-
               separatorBuilder: (context, index) {
                 return const SizedBox(height: 8);
               },
-
               itemBuilder: (context, index) {
                 final notification = _notifications[index];
 
@@ -388,8 +659,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
         ),
 
-        if (_totalPages > 1)
-          _buildPagination(),
+        if (_totalPages > 1) _buildPagination(),
       ],
     );
   }
@@ -406,16 +676,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
         vertical: 14,
       ),
       color: Colors.white,
-
       child: Row(
         children: [
           const Icon(
             Icons.mark_email_unread_outlined,
             color: Color(0xFF6F4E37),
           ),
-
           const SizedBox(width: 10),
-
           const Text(
             'Belum dibaca',
             style: TextStyle(
@@ -423,9 +690,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               color: Color(0xFF4E342E),
             ),
           ),
-
           const Spacer(),
-
           Container(
             padding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -465,37 +730,29 @@ class _NotificationsPageState extends State<NotificationsPage> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-
-        // Klik seluruh kartu menandai sudah dibaca.
-        onTap: notification.isRead || isProcessing
+        onTap: isProcessing
             ? null
-            : () => _markRead(notification),
-
+            : () => _openNotification(notification),
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 14,
           ),
-
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
                 radius: 23,
                 backgroundColor: const Color(0xFF6F4E37),
-
                 child: Icon(
                   _getNotificationIcon(notification.type),
                   color: Colors.white,
                   size: 22,
                 ),
               ),
-
               const SizedBox(width: 12),
-
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -510,19 +767,17 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         color: const Color(0xFF3E2723),
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     Text(
                       notification.body,
                       style: const TextStyle(
                         fontSize: 13,
                         color: Colors.black87,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-
                     const SizedBox(height: 8),
-
                     Text(
                       _formatDate(notification.createdAt),
                       style: const TextStyle(
@@ -530,25 +785,21 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         color: Colors.black54,
                       ),
                     ),
-
-                    if (!notification.isRead)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text(
-                          'Ketuk untuk menandai sudah dibaca',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF6F4E37),
-                            fontWeight: FontWeight.w600,
-                          ),
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Ketuk untuk melihat detail notifikasi',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF6F4E37),
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
+                    ),
                   ],
                 ),
               ),
-
               const SizedBox(width: 8),
-
               _buildReadButton(notification, isProcessing),
             ],
           ),
@@ -608,7 +859,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
         horizontal: 12,
         vertical: 8,
       ),
-
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -619,14 +869,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 : null,
             icon: const Icon(Icons.chevron_left),
           ),
-
           Text(
             'Halaman $_page dari $_totalPages',
             style: const TextStyle(
               fontWeight: FontWeight.w600,
             ),
           ),
-
           IconButton(
             tooltip: 'Halaman berikutnya',
             onPressed: _page < _totalPages
@@ -645,23 +893,20 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Widget _buildEmpty() {
     return RefreshIndicator(
-      onRefresh: () => _loadNotifications(page: _page),
+      onRefresh: () => _loadNotifications(page: 1, notifyPhone: true),
       color: const Color(0xFF6F4E37),
-
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 140),
-
-          Icon(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        children: [
+          const SizedBox(height: 90),
+          const Icon(
             Icons.notifications_none,
             size: 75,
             color: Color(0xFF6F4E37),
           ),
-
-          SizedBox(height: 18),
-
-          Center(
+          const SizedBox(height: 18),
+          const Center(
             child: Text(
               'Belum ada notifikasi.',
               style: TextStyle(
@@ -670,15 +915,40 @@ class _NotificationsPageState extends State<NotificationsPage> {
               ),
             ),
           ),
-
-          SizedBox(height: 8),
-
-          Center(
+          const SizedBox(height: 8),
+          const Center(
             child: Text(
               'Notifikasi baru akan muncul di sini.',
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.black45,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Tombol tes tetap tersedia meskipun daftar kosong.
+          _buildTestNotificationButton(),
+
+          const SizedBox(height: 12),
+
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _loading
+                  ? null
+                  : () => _loadNotifications(page: 1, notifyPhone: true),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Cek Notifikasi'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF6F4E37),
+                side: const BorderSide(
+                  color: Color(0xFF6F4E37),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                ),
               ),
             ),
           ),
@@ -695,7 +965,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -704,9 +973,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               size: 55,
               color: Colors.brown,
             ),
-
             const SizedBox(height: 14),
-
             Text(
               _error!,
               textAlign: TextAlign.center,
@@ -714,8 +981,12 @@ class _NotificationsPageState extends State<NotificationsPage> {
                 fontSize: 14,
               ),
             ),
-
             const SizedBox(height: 18),
+
+            // Tes notif juga tersedia saat gagal memuat daftar.
+            _buildTestNotificationButton(),
+
+            const SizedBox(height: 10),
 
             ElevatedButton.icon(
               onPressed: () {

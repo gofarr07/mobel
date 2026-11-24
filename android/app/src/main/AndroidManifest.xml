@@ -1,5 +1,7 @@
-
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Izin koneksi internet untuk API PHP -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -13,7 +15,8 @@
     <application
         android:label="project"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
 
         <!-- Receiver untuk menampilkan notifikasi terjadwal -->
         <receiver

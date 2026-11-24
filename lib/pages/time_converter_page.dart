@@ -277,7 +277,7 @@ class _TimeConverterPageState extends State<TimeConverterPage> {
             const SizedBox(height: 10),
 
             DropdownButtonFormField<String>(
-              value: _sourceZone,
+              initialValue: _sourceZone,
               decoration: InputDecoration(
                 filled: true,
                 fillColor: Colors.white,

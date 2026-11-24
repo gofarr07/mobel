@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../models/app_user.dart';
 import '../services/notification_service.dart';
+
 import 'notifications_page.dart';
 import 'profile_page.dart';
 import 'employees_page.dart';
@@ -36,6 +37,7 @@ class _HomePageState extends State<HomePage> {
   int _unreadCount = 0;
   bool _loadingNotifications = false;
   String? _notificationError;
+
   late final NotificationService _notificationService;
 
   AppUser get user => widget.user;
@@ -148,9 +150,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       child: Text(
-                        _unreadCount > 99
-                            ? '99+'
-                            : '$_unreadCount',
+                        _unreadCount > 99 ? '99+' : '$_unreadCount',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Colors.white,
@@ -164,7 +164,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // Tombol profil tetap dipertahankan.
+          // Tombol profil.
           IconButton(
             onPressed: () {
               Navigator.push(
@@ -189,7 +189,9 @@ class _HomePageState extends State<HomePage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildWelcomeCard(),
+
                 const SizedBox(height: 24),
+
                 const Text(
                   'Dashboard',
                   style: TextStyle(
@@ -198,14 +200,18 @@ class _HomePageState extends State<HomePage> {
                     color: Color(0xFF4E342E),
                   ),
                 ),
+
                 const SizedBox(height: 6),
+
                 Text(
                   'Anda masuk sebagai ${user.roleName}.',
                   style: const TextStyle(
                     color: Colors.black54,
                   ),
                 ),
+
                 const SizedBox(height: 20),
+
                 GridView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -229,7 +235,9 @@ class _HomePageState extends State<HomePage> {
                     );
                   },
                 ),
+
                 const SizedBox(height: 24),
+
                 const Center(
                   child: Text(
                     'Café Management System',
@@ -270,7 +278,9 @@ class _HomePageState extends State<HomePage> {
             color: Colors.white,
             size: 36,
           ),
+
           const SizedBox(height: 16),
+
           Text(
             'Halo, ${user.fullName}!',
             style: const TextStyle(
@@ -279,7 +289,9 @@ class _HomePageState extends State<HomePage> {
               color: Colors.white,
             ),
           ),
+
           const SizedBox(height: 8),
+
           Text(
             'Selamat datang di sistem manajemen café.',
             style: TextStyle(
@@ -287,7 +299,9 @@ class _HomePageState extends State<HomePage> {
               color: Colors.white.withValues(alpha: 0.9),
             ),
           ),
+
           const SizedBox(height: 14),
+
           Container(
             padding: const EdgeInsets.symmetric(
               horizontal: 12,
@@ -348,7 +362,9 @@ class _HomePageState extends State<HomePage> {
                 size: 36,
                 color: const Color(0xFF6F4E37),
               ),
+
               const SizedBox(height: 12),
+
               Text(
                 title,
                 textAlign: TextAlign.center,
@@ -358,7 +374,9 @@ class _HomePageState extends State<HomePage> {
                   color: Color(0xFF4E342E),
                 ),
               ),
+
               const SizedBox(height: 6),
+
               Text(
                 description,
                 textAlign: TextAlign.center,
@@ -569,6 +587,7 @@ class _HomePageState extends State<HomePage> {
       },
     );
 
+    // Pembagian menu berdasarkan role tetap dipertahankan.
     switch (role) {
       case UserRole.manager:
         return [
@@ -580,7 +599,7 @@ class _HomePageState extends State<HomePage> {
               Navigator.push(
                 context,
                 MaterialPageRoute<void>(
-                  builder: (_) => const EmployeesPage(),
+                  builder: (_) => EmployeesPage(user: user),
                 ),
               );
             },

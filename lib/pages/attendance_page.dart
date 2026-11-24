@@ -29,10 +29,10 @@ class _AttendancePageState extends State<AttendancePage> {
   Uri get _shiftsUri => Uri.parse('${ApiConfig.baseUrl}/shifts.php');
 
   Map<String, String> get _headers => {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json; charset=UTF-8',
-    'Authorization': 'Bearer ${widget.user.token}',
-  };
+        'Accept': 'application/json',
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Authorization': 'Bearer ${widget.user.token}',
+      };
 
   bool get _isManager => widget.user.role == UserRole.manager;
 
@@ -162,6 +162,7 @@ class _AttendancePageState extends State<AttendancePage> {
   Future<void> _submitAttendance({
     required String action,
     required int id,
+    required bool skipLocation,
   }) async {
     if (_processing) return;
 
@@ -170,13 +171,18 @@ class _AttendancePageState extends State<AttendancePage> {
     });
 
     try {
-      final position = await _getPosition();
-
       final body = <String, dynamic>{
         'action': action,
-        'latitude': position.latitude,
-        'longitude': position.longitude,
+        'skip_location': skipLocation,
       };
+
+      // GPS hanya diminta jika menggunakan tombol dengan lokasi.
+      if (!skipLocation) {
+        final position = await _getPosition();
+
+        body['latitude'] = position.latitude;
+        body['longitude'] = position.longitude;
+      }
 
       if (action == 'check_in') {
         body['shift_id'] = id;
@@ -185,7 +191,11 @@ class _AttendancePageState extends State<AttendancePage> {
       }
 
       final response = await http
-          .post(_attendanceUri, headers: _headers, body: jsonEncode(body))
+          .post(
+            _attendanceUri,
+            headers: _headers,
+            body: jsonEncode(body),
+          )
           .timeout(const Duration(seconds: 20));
 
       final result = await _getJson(response);
@@ -194,7 +204,10 @@ class _AttendancePageState extends State<AttendancePage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(result['message']?.toString() ?? 'Absensi berhasil.'),
+          content: Text(
+            result['message']?.toString() ?? 'Absensi berhasil.',
+          ),
+          backgroundColor: Colors.green.shade700,
         ),
       );
 
@@ -214,6 +227,55 @@ class _AttendancePageState extends State<AttendancePage> {
           _processing = false;
         });
       }
+    }
+  }
+
+  Future<void> _confirmAttendance({
+    required String action,
+    required int id,
+    required bool skipLocation,
+  }) async {
+    final isCheckIn = action == 'check_in';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(
+            isCheckIn ? 'Konfirmasi Check-in' : 'Konfirmasi Check-out',
+          ),
+          content: Text(
+            skipLocation
+                ? 'Kamu akan melakukan ${isCheckIn ? 'check-in' : 'check-out'} TANPA pemeriksaan lokasi. '
+                    'Fitur ini ditujukan untuk uji coba. Lanjutkan?'
+                : 'Kamu akan melakukan ${isCheckIn ? 'check-in' : 'check-out'} dengan pemeriksaan GPS dan radius 100 meter. Lanjutkan?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Batal'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: skipLocation
+                    ? Colors.orange.shade800
+                    : const Color(0xFF8C5E3C),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Lanjutkan'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      await _submitAttendance(
+        action: action,
+        id: id,
+        skipLocation: skipLocation,
+      );
     }
   }
 
@@ -260,7 +322,8 @@ class _AttendancePageState extends State<AttendancePage> {
   bool _isOpenAttendance(Map<String, dynamic> record) {
     return record['check_in'] != null &&
         record['check_in'].toString().isNotEmpty &&
-        (record['check_out'] == null || record['check_out'].toString().isEmpty);
+        (record['check_out'] == null ||
+            record['check_out'].toString().isEmpty);
   }
 
   @override
@@ -299,7 +362,9 @@ class _AttendancePageState extends State<AttendancePage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: primaryBrown))
+          ? const Center(
+              child: CircularProgressIndicator(color: primaryBrown),
+            )
           : RefreshIndicator(
               color: primaryBrown,
               onRefresh: _loadData,
@@ -397,7 +462,8 @@ class _AttendancePageState extends State<AttendancePage> {
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'Check-in dan check-out hanya dapat dilakukan dalam radius 100 meter dari lokasi Cabang A. Pastikan GPS aktif.',
+                  'Pilih metode absensi dengan lokasi atau tanpa lokasi (uji coba). '
+                  'Metode dengan lokasi tetap memerlukan GPS dan radius 100 meter.',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.black54,
@@ -430,14 +496,13 @@ class _AttendancePageState extends State<AttendancePage> {
     const primaryBrown = Color(0xFF8C5E3C);
 
     final availableShifts = _shifts.where((shift) {
-      final date = shift['shift_date']?.toString();
       final id = int.tryParse(shift['id']?.toString() ?? '');
 
-      if (date == null || id == null) return false;
+      if (id == null) return false;
 
       return !_records.any(
         (record) =>
-            record['shift_id'].toString() == id.toString() &&
+            record['shift_id']?.toString() == id.toString() &&
             record['check_in'] != null &&
             record['check_in'].toString().isNotEmpty,
       );
@@ -484,58 +549,99 @@ class _AttendancePageState extends State<AttendancePage> {
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF9F5F2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.calendar_month_rounded,
-                    color: primaryBrown,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${shift['branch'] ?? 'Cabang'} •${_formatDate(shift['shift_date'])}',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                          color: Colors.black87,
-                        ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF9F5F2),
+                        shape: BoxShape.circle,
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_formatTime(shift['start_time'])}–${_formatTime(shift['end_time'])}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                        ),
+                      child: const Icon(
+                        Icons.calendar_month_rounded,
+                        color: primaryBrown,
+                        size: 22,
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${shift['branch'] ?? 'Cabang'} • ${_formatDate(shift['shift_date'])}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_formatTime(shift['start_time'])}–${_formatTime(shift['end_time'])}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                ElevatedButton(
-                  onPressed: _processing || shiftId == null
-                      ? null
-                      : () =>
-                            _submitAttendance(action: 'check_in', id: shiftId),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryBrown,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _processing || shiftId == null
+                        ? null
+                        : () => _confirmAttendance(
+                              action: 'check_in',
+                              id: shiftId,
+                              skipLocation: false,
+                            ),
+                    icon: const Icon(Icons.location_on_rounded),
+                    label: const Text('Check-in dengan Lokasi'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryBrown,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
                     ),
                   ),
-                  child: const Text('Check-in'),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _processing || shiftId == null
+                        ? null
+                        : () => _confirmAttendance(
+                              action: 'check_in',
+                              id: shiftId,
+                              skipLocation: true,
+                            ),
+                    icon: const Icon(Icons.location_off_rounded),
+                    label: const Text(
+                      'Check-in tanpa Lokasi (Uji Coba)',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.deepOrange.shade800,
+                      side: BorderSide(
+                        color: Colors.deepOrange.shade300,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -547,6 +653,7 @@ class _AttendancePageState extends State<AttendancePage> {
 
   Widget _buildAttendanceCard(Map<String, dynamic> record) {
     const primaryBrown = Color(0xFF8C5E3C);
+
     final open = _isOpenAttendance(record);
     final employeeName =
         record['actual_employee_name'] ??
@@ -554,6 +661,9 @@ class _AttendancePageState extends State<AttendancePage> {
         'Karyawan';
 
     final statusText = _statusLabel(record['status']);
+    final notes = record['notes']?.toString() ?? '';
+    final noLocation = notes.contains('[ABSEN TANPA LOKASI - UJI COBA]');
+
     Color statusBgColor = Colors.grey.withValues(alpha: 0.1);
     Color statusTextColor = Colors.grey.shade700;
 
@@ -651,37 +761,89 @@ class _AttendancePageState extends State<AttendancePage> {
               children: [
                 Text(
                   'Check-in: ${_formatTime(record['check_in'])}',
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black87,
+                  ),
                 ),
                 Text(
                   'Check-out: ${_formatTime(record['check_out'])}',
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black87,
+                  ),
                 ),
               ],
             ),
+            if (noLocation) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.location_off_rounded,
+                    color: Colors.deepOrange.shade700,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Check-in tanpa lokasi (uji coba)',
+                    style: TextStyle(
+                      color: Colors.deepOrange.shade700,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (open && !_isManager) ...[
               const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _processing
+                      ? null
+                      : () => _confirmAttendance(
+                            action: 'check_out',
+                            id: int.parse(record['id'].toString()),
+                            skipLocation: false,
+                          ),
+                  icon: const Icon(Icons.location_on_rounded),
+                  label: const Text('Check-out dengan Lokasi'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryBrown,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: _processing
                       ? null
-                      : () => _submitAttendance(
-                          action: 'check_out',
-                          id: int.parse(record['id'].toString()),
-                        ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: primaryBrown),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                  ),
-                  icon: const Icon(Icons.logout_rounded, color: primaryBrown),
+                      : () => _confirmAttendance(
+                            action: 'check_out',
+                            id: int.parse(record['id'].toString()),
+                            skipLocation: true,
+                          ),
+                  icon: const Icon(Icons.location_off_rounded),
                   label: const Text(
-                    'Check-out',
-                    style: TextStyle(
-                      color: primaryBrown,
-                      fontWeight: FontWeight.bold,
+                    'Check-out tanpa Lokasi (Uji Coba)',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.deepOrange.shade800,
+                    side: BorderSide(
+                      color: Colors.deepOrange.shade300,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),

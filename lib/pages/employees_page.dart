@@ -1,24 +1,35 @@
+
 import 'package:flutter/material.dart';
 
+import '../models/app_user.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
 import 'add_employee_page.dart';
 
 class EmployeesPage extends StatefulWidget {
-  const EmployeesPage({super.key});
+  final AppUser user;
+
+  const EmployeesPage({
+    super.key,
+    required this.user,
+  });
 
   @override
   State<EmployeesPage> createState() => _EmployeesPageState();
 }
 
 class _EmployeesPageState extends State<EmployeesPage> {
-  final EmployeeService _service = EmployeeService();
-
+  late final EmployeeService _service;
   late Future<List<Employee>> _employeesFuture;
 
   @override
   void initState() {
     super.initState();
+
+    // Inisialisasi service menggunakan token user yang login.
+    _service = EmployeeService(token: widget.user.token);
+
+    // Ambil data karyawan.
     _loadEmployees();
   }
 
@@ -28,6 +39,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
 
   String _formatRupiah(double value) {
     final amount = value.toInt().toString();
+
     final formatted = amount.replaceAllMapped(
       RegExp(r'\B(?=(\d{3})+(?!\d))'),
       (match) => '.',
@@ -72,18 +84,26 @@ class _EmployeesPageState extends State<EmployeesPage> {
         actions: [
           IconButton(
             tooltip: 'Muat ulang',
-            icon: const Icon(Icons.refresh_rounded, color: Colors.black87),
+            icon: const Icon(
+              Icons.refresh_rounded,
+              color: Colors.black87,
+            ),
             onPressed: () {
               setState(_loadEmployees);
             },
           ),
         ],
       ),
+
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           final result = await Navigator.push<bool>(
             context,
-            MaterialPageRoute(builder: (context) => const AddEmployeePage()),
+            MaterialPageRoute(
+              builder: (context) => AddEmployeePage(
+                user: widget.user,
+              ),
+            ),
           );
 
           if (result == true && mounted) {
@@ -93,19 +113,24 @@ class _EmployeesPageState extends State<EmployeesPage> {
         backgroundColor: primaryBrown,
         foregroundColor: Colors.white,
         elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(30),
+        ),
         icon: const Icon(Icons.person_add_rounded),
         label: const Text(
           'Tambah Karyawan',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
       ),
+
       body: FutureBuilder<List<Employee>>(
         future: _employeesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: primaryBrown),
+              child: CircularProgressIndicator(
+                color: primaryBrown,
+              ),
             );
           }
 
@@ -141,7 +166,9 @@ class _EmployeesPageState extends State<EmployeesPage> {
                     Text(
                       '${snapshot.error}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.black54),
+                      style: const TextStyle(
+                        color: Colors.black54,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
@@ -195,7 +222,10 @@ class _EmployeesPageState extends State<EmployeesPage> {
                   Center(
                     child: Text(
                       'Tarik layar ke bawah untuk memuat ulang.',
-                      style: TextStyle(fontSize: 13, color: Colors.black38),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.black38,
+                      ),
                     ),
                   ),
                 ],
@@ -276,6 +306,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 20),
 
                 // Daftar Karyawan
@@ -312,7 +343,9 @@ class _EmployeesPageState extends State<EmployeesPage> {
                               ),
                             ),
                           ),
+
                           const SizedBox(width: 14),
+
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,6 +364,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
                                         ),
                                       ),
                                     ),
+
                                     Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 10,
@@ -341,7 +375,9 @@ class _EmployeesPageState extends State<EmployeesPage> {
                                             ? Colors.green.withValues(
                                                 alpha: 0.1,
                                               )
-                                            : Colors.red.withValues(alpha: 0.1),
+                                            : Colors.red.withValues(
+                                                alpha: 0.1,
+                                              ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Row(
@@ -371,7 +407,9 @@ class _EmployeesPageState extends State<EmployeesPage> {
                                     ),
                                   ],
                                 ),
+
                                 const SizedBox(height: 4),
+
                                 Text(
                                   '${employee.employeeCode} • ${employee.position}',
                                   style: const TextStyle(
@@ -380,22 +418,30 @@ class _EmployeesPageState extends State<EmployeesPage> {
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
+
                                 const SizedBox(height: 8),
+
                                 const Divider(
                                   height: 1,
                                   color: Color(0xFFF0F0F0),
                                 ),
+
                                 const SizedBox(height: 8),
+
                                 _buildDetailRow(
                                   Icons.phone_outlined,
                                   employee.phone ?? '-',
                                 ),
+
                                 const SizedBox(height: 4),
+
                                 _buildDetailRow(
                                   Icons.payments_outlined,
                                   '${_formatRupiah(employee.shiftRate)} / shift',
                                 ),
+
                                 const SizedBox(height: 4),
+
                                 _buildDetailRow(
                                   Icons.calendar_today_outlined,
                                   'Mulai: ${employee.hireDate}',
@@ -419,9 +465,19 @@ class _EmployeesPageState extends State<EmployeesPage> {
   Widget _buildDetailRow(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: Colors.black45),
+        Icon(
+          icon,
+          size: 14,
+          color: Colors.black45,
+        ),
         const SizedBox(width: 6),
-        Text(text, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.black54,
+          ),
+        ),
       ],
     );
   }

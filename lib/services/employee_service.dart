@@ -1,33 +1,44 @@
 
 import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../models/employee.dart';
 
 class EmployeeService {
-  // Mengambil daftar karyawan dari PHP API.
+  final String token;
+
+  EmployeeService({required this.token});
+
+  Map<String, String> get _headers => {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer ${token.trim()}',
+  };
+
   Future<List<Employee>> getEmployees() async {
+    if (token.trim().isEmpty) {
+      throw Exception('Token login tidak ditemukan.');
+    }
+
     final response = await http
         .get(
           Uri.parse('${ApiConfig.baseUrl}/employees.php'),
-          headers: {'Accept': 'application/json'},
+          headers: _headers,
         )
         .timeout(const Duration(seconds: 15));
 
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Server gagal mengambil data (${response.statusCode}).',
-      );
-    }
-
     final dynamic result = jsonDecode(response.body);
 
-    if (result is! Map<String, dynamic> ||
+    if (response.statusCode != 200 ||
+        result is! Map<String, dynamic> ||
         result['success'] != true ||
         result['data'] is! List) {
-      throw Exception('Format respons data karyawan tidak valid.');
+      throw Exception(
+        result is Map
+            ? result['message'] ?? 'Gagal mengambil data karyawan.'
+            : 'Gagal mengambil data karyawan.',
+      );
     }
 
     final List<dynamic> data = result['data'];
@@ -41,7 +52,6 @@ class EmployeeService {
         .toList();
   }
 
-  // Menambahkan karyawan sekaligus membuat akun login.
   Future<void> addEmployee({
     required String fullName,
     required String phone,
@@ -51,17 +61,18 @@ class EmployeeService {
     required double shiftRate,
     required String hireDate,
   }) async {
+    if (token.trim().isEmpty) {
+      throw Exception('Token login tidak ditemukan.');
+    }
+
     final response = await http
         .post(
           Uri.parse('${ApiConfig.baseUrl}/employees.php'),
-          headers: {
-            'Content-Type': 'application/json; charset=UTF-8',
-            'Accept': 'application/json',
-          },
+          headers: _headers,
           body: jsonEncode({
             'full_name': fullName.trim(),
             'phone': phone.trim(),
-            'position': position,
+            'position': position.trim(),
             'username': username.trim(),
             'password': password,
             'shift_rate': shiftRate,
@@ -72,14 +83,14 @@ class EmployeeService {
 
     final dynamic result = jsonDecode(response.body);
 
-    if (result is! Map<String, dynamic>) {
-      throw Exception('Respons server tidak valid.');
-    }
-
-    if (response.statusCode != 201 || result['success'] != true) {
+    if (result is! Map<String, dynamic> ||
+        response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        result['success'] != true) {
       throw Exception(
-        result['message']?.toString() ??
-            'Gagal menambahkan karyawan.',
+        result is Map
+            ? result['message'] ?? 'Gagal menambahkan karyawan.'
+            : 'Respons server tidak valid.',
       );
     }
   }

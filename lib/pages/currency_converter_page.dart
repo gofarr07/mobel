@@ -380,7 +380,7 @@ class _CurrencyConverterPageState
         ),
         const SizedBox(height: 7),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           isExpanded: true,
           decoration: InputDecoration(
             border: OutlineInputBorder(

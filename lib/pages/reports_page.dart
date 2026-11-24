@@ -660,8 +660,6 @@ class _ReportsPageState extends State<ReportsPage> {
     final closed = session?['session_status'] == 'closed';
 
     final reportStatus = report?['status']?.toString() ?? '';
-    final canSubmit = closed &&
-        (report == null || reportStatus == 'revision');
 
     return RefreshIndicator(
       onRefresh: () => _loadData(showLoading: false),
@@ -821,7 +819,7 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedBranch,
+              initialValue: _selectedBranch,
               decoration: const InputDecoration(
                 labelText: 'Cabang',
                 border: OutlineInputBorder(),
@@ -1143,7 +1141,7 @@ class _ReportsPageState extends State<ReportsPage> {
           ),
           const SizedBox(height: 20),
           DropdownButtonFormField<String>(
-            value: _selectedStatus,
+            initialValue: _selectedStatus,
             decoration: const InputDecoration(
               labelText: 'Filter Status',
               border: OutlineInputBorder(),

@@ -1,4 +1,3 @@
-
 class Shift {
   final int id;
   final int employeeId;
@@ -31,10 +30,10 @@ class Shift {
         map['full_name'] ?? map['employee_name'] ?? ''
       ).toString(),
       position: map['position']?.toString() ?? '',
-      branch: map['branch'].toString(),
-      shiftDate: map['shift_date'].toString(),
-      startTime: map['start_time'].toString(),
-      endTime: map['end_time'].toString(),
+      branch: map['branch']?.toString() ?? '',
+      shiftDate: map['shift_date']?.toString() ?? '',
+      startTime: map['start_time']?.toString() ?? '',
+      endTime: map['end_time']?.toString() ?? '',
     );
   }
 
@@ -55,7 +54,54 @@ class Shift {
   String get branchName => 'Cabang $branch';
 
   String get formattedTime {
+    if (startTime.length < 5 || endTime.length < 5) {
+      return '$startTime - $endTime';
+    }
+
     return '${startTime.substring(0, 5)} - '
         '${endTime.substring(0, 5)}';
+  }
+
+  String get formattedDate {
+    final date = DateTime.tryParse(shiftDate);
+
+    if (date == null) return shiftDate;
+
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
+
+  DateTime? get shiftStartDateTime {
+    final date = DateTime.tryParse(shiftDate);
+
+    if (date == null) return null;
+
+    final timeParts = startTime.split(':');
+
+    if (timeParts.length < 2) return null;
+
+    final hour = int.tryParse(timeParts[0]);
+    final minute = int.tryParse(timeParts[1]);
+
+    if (hour == null || minute == null) return null;
+
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      hour,
+      minute,
+    );
+  }
+
+  DateTime? get reminderDateTime {
+    final shiftStart = shiftStartDateTime;
+
+    if (shiftStart == null) return null;
+
+    return shiftStart.subtract(
+      const Duration(hours: 3),
+    );
   }
 }

@@ -1,11 +1,18 @@
+
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../models/app_user.dart';
 import '../services/employee_service.dart';
 
 class AddEmployeePage extends StatefulWidget {
-  const AddEmployeePage({super.key});
+  final AppUser user;
+
+  const AddEmployeePage({
+    super.key,
+    required this.user,
+  });
 
   @override
   State<AddEmployeePage> createState() => _AddEmployeePageState();
@@ -21,11 +28,21 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
   final _shiftRateController = TextEditingController();
   final _hireDateController = TextEditingController();
 
-  final EmployeeService _employeeService = EmployeeService();
+  late final EmployeeService _employeeService;
 
   String _position = 'Barista';
   bool _isLoading = false;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Gunakan token dari user yang sedang login.
+    _employeeService = EmployeeService(
+      token: widget.user.token,
+    );
+  }
 
   @override
   void dispose() {
@@ -41,7 +58,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
   Future<void> _selectHireDate() async {
     final now = DateTime.now();
 
-    final DateTime? selectedDate = await showDatePicker(
+    final selectedDate = await showDatePicker(
       context: context,
       initialDate: DateTime(now.year, now.month, now.day),
       firstDate: DateTime(2000),
@@ -86,12 +103,9 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
     );
 
     if (shiftRate == null || !shiftRate.isFinite || shiftRate < 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Gaji per shift harus berupa angka yang valid.'),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-        ),
+      _showMessage(
+        'Gaji per shift harus berupa angka yang valid.',
+        isError: true,
       );
       return;
     }
@@ -113,24 +127,17 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Karyawan dan akun login berhasil dibuat.'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        ),
+      _showMessage(
+        'Karyawan dan akun login berhasil dibuat.',
       );
 
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: Colors.red.shade700,
-          behavior: SnackBarBehavior.floating,
-        ),
+      _showMessage(
+        e.toString().replaceFirst('Exception: ', ''),
+        isError: true,
       );
     } finally {
       if (mounted) {
@@ -139,6 +146,17 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
         });
       }
     }
+  }
+
+  void _showMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            isError ? Colors.red.shade700 : Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -194,6 +212,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                     ),
                   ),
                   const SizedBox(height: 24),
+
                   const Text(
                     'Data Karyawan Baru',
                     style: TextStyle(
@@ -224,10 +243,12 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                       icon: Icons.person_outline_rounded,
                     ).copyWith(counterText: ''),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty)
+                      if (value == null || value.trim().isEmpty) {
                         return 'Nama lengkap wajib diisi.';
-                      if (value.trim().length > 100)
+                      }
+                      if (value.trim().length > 100) {
                         return 'Nama maksimal 100 karakter.';
+                      }
                       return null;
                     },
                   ),
@@ -244,12 +265,16 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                     ).copyWith(counterText: ''),
                     validator: (value) {
                       final phone = value?.trim() ?? '';
+
                       if (phone.isNotEmpty &&
                           !RegExp(r'^[0-9+\-\s()]+$').hasMatch(phone)) {
                         return 'Format nomor telepon tidak valid.';
                       }
-                      if (phone.length > 20)
+
+                      if (phone.length > 20) {
                         return 'Nomor telepon maksimal 20 karakter.';
+                      }
+
                       return null;
                     },
                   ),
@@ -259,7 +284,6 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                   _buildLabel('Username'),
                   TextFormField(
                     controller: _usernameController,
-                    keyboardType: TextInputType.text,
                     textInputAction: TextInputAction.next,
                     autocorrect: false,
                     enableSuggestions: false,
@@ -270,14 +294,21 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                     ).copyWith(counterText: ''),
                     validator: (value) {
                       final username = value?.trim() ?? '';
-                      if (username.isEmpty) return 'Username wajib diisi.';
-                      if (username.length < 3)
+
+                      if (username.isEmpty) {
+                        return 'Username wajib diisi.';
+                      }
+                      if (username.length < 3) {
                         return 'Username minimal 3 karakter.';
-                      if (username.length > 50)
+                      }
+                      if (username.length > 50) {
                         return 'Username maksimal 50 karakter.';
-                      if (!RegExp(r'^[a-zA-Z0-9._-]+$').hasMatch(username)) {
+                      }
+                      if (!RegExp(r'^[a-zA-Z0-9._-]+$')
+                          .hasMatch(username)) {
                         return 'Gunakan huruf, angka, titik, garis bawah, atau tanda hubung.';
                       }
+
                       return null;
                     },
                   ),
@@ -290,42 +321,50 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                     autocorrect: false,
                     enableSuggestions: false,
                     textInputAction: TextInputAction.next,
-                    decoration:
-                        _inputDecoration(
-                          hint: 'Minimal 8 karakter',
-                          icon: Icons.lock_outline_rounded,
-                        ).copyWith(
-                          suffixIcon: IconButton(
-                            tooltip: _obscurePassword
-                                ? 'Tampilkan password'
-                                : 'Sembunyikan password',
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                              color: Colors.black45,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
+                    decoration: _inputDecoration(
+                      hint: 'Minimal 8 karakter',
+                      icon: Icons.lock_outline_rounded,
+                    ).copyWith(
+                      suffixIcon: IconButton(
+                        tooltip: _obscurePassword
+                            ? 'Tampilkan password'
+                            : 'Sembunyikan password',
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined,
+                          color: Colors.black45,
                         ),
+                        onPressed: () {
+                          setState(() {
+                            _obscurePassword = !_obscurePassword;
+                          });
+                        },
+                      ),
+                    ),
                     validator: (value) {
                       final password = value ?? '';
-                      if (password.isEmpty) return 'Password wajib diisi.';
-                      if (password.length < 8)
+
+                      if (password.isEmpty) {
+                        return 'Password wajib diisi.';
+                      }
+                      if (password.length < 8) {
                         return 'Password minimal 8 karakter.';
-                      if (utf8.encode(password).length > 72)
+                      }
+                      if (utf8.encode(password).length > 72) {
                         return 'Password terlalu panjang.';
+                      }
+
                       return null;
                     },
                   ),
                   const SizedBox(height: 8),
                   const Text(
                     'Simpan informasi login ini dengan aman dan berikan kepada karyawan yang bersangkutan.',
-                    style: TextStyle(fontSize: 11, color: Colors.black45),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.black45,
+                    ),
                   ),
                   const SizedBox(height: 28),
 
@@ -344,7 +383,10 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                         value: 'Barista',
                         child: Text('Barista'),
                       ),
-                      DropdownMenuItem(value: 'Kasir', child: Text('Kasir')),
+                      DropdownMenuItem(
+                        value: 'Kasir',
+                        child: Text('Kasir'),
+                      ),
                       DropdownMenuItem(
                         value: 'Supervisor',
                         child: Text('Supervisor'),
@@ -369,22 +411,27 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                   _buildLabel('Gaji per Shift (Rp)'),
                   TextFormField(
                     controller: _shiftRateController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: _inputDecoration(
                       hint: 'Contoh: 50000',
                       icon: Icons.payments_outlined,
                     ),
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty)
+                      if (value == null || value.trim().isEmpty) {
                         return 'Gaji per shift wajib diisi.';
+                      }
+
                       final amount = double.tryParse(
                         value.trim().replaceAll(',', '.'),
                       );
-                      if (amount == null || !amount.isFinite || amount < 0) {
+
+                      if (amount == null ||
+                          !amount.isFinite ||
+                          amount < 0) {
                         return 'Masukkan nominal yang valid.';
                       }
+
                       return null;
                     },
                   ),
@@ -394,20 +441,20 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                   TextFormField(
                     controller: _hireDateController,
                     readOnly: true,
-                    decoration:
-                        _inputDecoration(
-                          hint: 'Pilih tanggal masuk',
-                          icon: Icons.calendar_month_outlined,
-                        ).copyWith(
-                          suffixIcon: const Icon(
-                            Icons.date_range_rounded,
-                            color: Colors.black45,
-                          ),
-                        ),
+                    decoration: _inputDecoration(
+                      hint: 'Pilih tanggal masuk',
+                      icon: Icons.calendar_month_outlined,
+                    ).copyWith(
+                      suffixIcon: const Icon(
+                        Icons.date_range_rounded,
+                        color: Colors.black45,
+                      ),
+                    ),
                     onTap: _isLoading ? null : _selectHireDate,
                     validator: (value) {
-                      if (value == null || value.trim().isEmpty)
+                      if (value == null || value.trim().isEmpty) {
                         return 'Tanggal masuk wajib dipilih.';
+                      }
                       return null;
                     },
                   ),
@@ -429,7 +476,9 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                             )
                           : const Icon(Icons.save_rounded),
                       label: Text(
-                        _isLoading ? 'Menyimpan...' : 'Simpan Karyawan',
+                        _isLoading
+                            ? 'Menyimpan...'
+                            : 'Simpan Karyawan',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 15,
@@ -439,9 +488,8 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                         backgroundColor: primaryBrown,
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        disabledBackgroundColor: primaryBrown.withValues(
-                          alpha: 0.6,
-                        ),
+                        disabledBackgroundColor:
+                            primaryBrown.withValues(alpha: 0.6),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -449,6 +497,7 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                     ),
                   ),
                   const SizedBox(height: 12),
+
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -457,7 +506,9 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
                           ? null
                           : () => Navigator.pop(context, false),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFFEFE8E1)),
+                        side: const BorderSide(
+                          color: Color(0xFFEFE8E1),
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -515,8 +566,15 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: Colors.black38, fontSize: 14),
-      prefixIcon: Icon(icon, color: Colors.black45, size: 22),
+      hintStyle: const TextStyle(
+        color: Colors.black38,
+        fontSize: 14,
+      ),
+      prefixIcon: Icon(
+        icon,
+        color: Colors.black45,
+        size: 22,
+      ),
       filled: true,
       fillColor: Colors.white,
       border: OutlineInputBorder(
@@ -525,17 +583,27 @@ class _AddEmployeePageState extends State<AddEmployeePage> {
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFFEFE8E1)),
+        borderSide: const BorderSide(
+          color: Color(0xFFEFE8E1),
+        ),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: const BorderSide(color: Color(0xFF8C5E3C), width: 1.5),
+        borderSide: const BorderSide(
+          color: Color(0xFF8C5E3C),
+          width: 1.5,
+        ),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
-        borderSide: BorderSide(color: Colors.red.shade300),
+        borderSide: const BorderSide(
+          color: Colors.red,
+        ),
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 16,
+      ),
     );
   }
 }

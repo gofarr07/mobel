@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'pages/login_page.dart';
 import 'pages/home_page.dart';
 import 'services/session_manager.dart';
+import 'services/local_notification_service.dart';
 import 'models/app_user.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Cek apakah ada sesi aktif yang belum kedaluwarsa
+  await LocalNotificationService.initialize();
+
   AppUser? activeUser = await SessionManager.getValidSession();
 
   runApp(MyApp(initialUser: activeUser));
